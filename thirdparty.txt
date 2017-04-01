@@ -1,0 +1,7 @@
+0. libblas libopenblas libsuitesparse
+1. eigen3   3.2.19
+2. libuvc
+3. ceres
+4. boost 1.58.0
+5. glog
+6. opencv

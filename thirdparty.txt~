@@ -1,0 +1,7 @@
+0. libblas libopenblas
+1. eigen3   3.2.19
+2. libuvc
+3. ceres
+4. boost
+5. glog
+6. opencv
