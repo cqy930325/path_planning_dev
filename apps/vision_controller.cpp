@@ -27,12 +27,15 @@ public:
     virtual ~MarkerLocator() {}
     virtual bool getModels(std::string file_calib) = 0;
     virtual bool getCameraPose(std::shared_ptr<PI::interface::Data> data) = 0;
+    virtual bool getBotPose(std::shared_ptr<PI::interface::Data> data,cv::Affine3d *bot_T_pattern) = 0;
 protected:
     std::shared_ptr<PI::marker::MarkerDetector> detector_ptr;
     double max_rms_value = 5.0;
     cv::Affine3d *device_T_pattern = new cv::Affine3d;
     std::map<PI::sensor::Id, cv::Affine3d> sensors_Ts_device;
+    cv::Affine3d *bot_T_device = new cv::Affine3d;
 };
+
 MarkerLocator::MarkerLocator(std::shared_ptr<PI::config::Config> cfg){
         detector_ptr = PI::marker::CreateMarkerDetector(cfg);
 }
@@ -42,8 +45,8 @@ public:
     ~ChessStereoLocator(){}
     bool getModels(std::string file_calib) override;
     bool getCameraPose(std::shared_ptr<PI::interface::Data> data) override;
+    bool getBotPose(std::shared_ptr<PI::interface::Data> data,cv::Affine3d *bot_T_pattern) override;
     cv::Affine3d getDevice_T_pattern(){return *device_T_pattern;}
-    cv::Affine3d *bot_T_device = new cv::Affine3d;
 private:
     std::shared_ptr<PI::marker::ChessboardDetector> cbDetectorptr;
     std::map<PI::sensor::Id, std::shared_ptr<const PI::model::CameraModel>> camera_models;
@@ -51,11 +54,22 @@ private:
     PI::util::StatisticWatcher<double> *errors = nullptr;
 
 };
+
+
+
+
+
 ChessStereoLocator::ChessStereoLocator(std::shared_ptr<PI::config::Config> cfg) : MarkerLocator(cfg){
     cbDetectorptr = std::dynamic_pointer_cast<PI::marker::ChessboardDetector>(detector_ptr);
 }
 
-
+bool ChessStereoLocator::getBotPose(std::shared_ptr<PI::interface::Data> data,cv::Affine3d *bot_T_pattern){
+   if (!getCameraPose(data)){
+       return false;
+   }
+    *bot_T_pattern = *device_T_pattern * *bot_T_device;
+   return true;
+}
 bool ChessStereoLocator::getModels(const std::string file_calib){
     std::shared_ptr<PI::model::CalibrationTree> calibTreeptr =  PI::model::ReadCalibration(file_calib);
     std::set<PI::sensor::Id> sensors;
@@ -121,7 +135,6 @@ int main(int argc, char *argv[]) {
         std::cout << "can not find camera model in JSON file!" << std::endl;
         return -1;
     }
-    printAffine3D(*csl.bot_T_device);
     // Start streaming.
     if (!interface.StartStreaming()) {
         return -1;
@@ -163,8 +176,10 @@ int main(int argc, char *argv[]) {
             if (key == 27) {
                 break;
             }
-            if (csl.getCameraPose(stereo_data)){
-                printAffine3D(csl.getDevice_T_pattern());
+            cv::Affine3d *botPose = new cv::Affine3d;
+            if (csl.getBotPose(stereo_data,botPose)){
+                //printAffine3D(csl.getDevice_T_pattern());
+                printAffine3D(*botPose);
             }
             continue;
         }
