@@ -1,12 +1,10 @@
 /** PerceptIn license **/
 
 #include <opencv2/highgui/highgui.hpp>
-
 #include <interface/perceptin_v1_interface.h>
 
 const std::string kWindowName1("PerceptIn V1 Stereo Left");
 const std::string kWindowName2("PerceptIn V1 Stereo Right");
-
 void ExposureTrackerBarCallback(int value, void *interface_ptr) {
   static_cast<PI::interface::PerceptInV1Interface*>(interface_ptr)->SetExposure(
       value);

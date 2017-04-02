@@ -14,6 +14,8 @@
 #include <sensor/sensors.h>
 #include <util/statistics.h>
 #include <iostream>
+#include <planning/command.h>
+#include <Eigen/Core>
 const std::string kWindowName1("PerceptIn V1 Stereo Left");
 const std::string kWindowName2("PerceptIn V1 Stereo Right");
 
@@ -21,6 +23,9 @@ void ExposureTrackerBarCallback(int value, void *interface_ptr) {
     static_cast<PI::interface::PerceptInV1Interface*>(interface_ptr)->SetExposure(
                 uint32_t(value));
 }
+
+
+
 class MarkerLocator{
 public:
     explicit MarkerLocator(std::shared_ptr<PI::config::Config> cfg);
@@ -30,7 +35,7 @@ public:
     virtual bool getBotPose(std::shared_ptr<PI::interface::Data> data,cv::Affine3d *bot_T_pattern) = 0;
 protected:
     std::shared_ptr<PI::marker::MarkerDetector> detector_ptr;
-    double max_rms_value = 5.0;
+    double max_rms_value = 5.0; //TODO:need add to config file
     cv::Affine3d *device_T_pattern = new cv::Affine3d;
     std::map<PI::sensor::Id, cv::Affine3d> sensors_Ts_device;
     cv::Affine3d *bot_T_device = new cv::Affine3d;
@@ -107,6 +112,95 @@ bool ChessStereoLocator::getCameraPose(const std::shared_ptr<PI::interface::Data
     return PI::marker::SolvePnp(correspondences,camera_models,sensors_Ts_device,max_rms_value,device_T_pattern,inliers,errors);
 }
 
+/**                                              y
+ *  coordinate system for bot                   /|\
+ *  x:                                           |
+ *  y: direction for the bot head for            |_______\ x                                                      /
+ *  z: perpendicular to x-y plane (point up to the ground )
+ */
+class Controller{
+public:
+    struct Parameters{
+        double x_thresh,y_thresh,angle_thresh;
+        double steer_step, move_step;
+    };
+    enum State{IDLE,LEFT,RIGHT,FORWARD,BACKWARD,HALT};
+    Controller(Parameters p);
+    PI::planning::Command getCommand(std::shared_ptr<PI::interface::Data> data,ChessStereoLocator csl);
+    std::string command2Str();
+private:
+    PI::planning::Command cmd;
+    PI::planning::Command prev_cmd;
+    cv::Affine3d* pose;
+    State state,prev_state;
+    double x_thresh,y_thresh,angle_thresh;
+    double steer_step, move_step;
+    double lost_count;
+};
+Controller::Controller(Controller::Parameters p){
+    x_thresh = p.x_thresh;
+    y_thresh = p.y_thresh;
+    angle_thresh = p.angle_thresh;
+    steer_step = p.steer_step;
+    move_step = p.move_step;
+    state = IDLE;
+    prev_state = IDLE;
+}
+std::string Controller::command2Str(){
+    std::string ret;
+    switch(state){
+        case LEFT:    ret ="LEFT";
+            break;
+        case RIGHT:   ret ="RIGHT";
+            break;
+        case HALT:    ret ="HALT";
+            break;
+        case FORWARD: ret ="FORWARD";
+            break;
+        case BACKWARD:ret ="BACKWARD";
+            break;
+        default:      ret ="IDLE";
+    }
+    return ret;
+}
+PI::planning::Command Controller::getCommand(std::shared_ptr<PI::interface::Data> data,ChessStereoLocator csl){
+    if (!csl.getBotPose(data,pose)){
+        if (state == IDLE)
+            return PI::planning::Command(PI::planning::command::MOVE,0);
+        if (state == RIGHT || state == LEFT){
+            lost_count++;
+        if (lost_count < 5)
+            return PI::planning::Command(PI::planning::command::MOVE,0);
+        else
+            return PI::planning::Command(PI::planning::command::TURN,state == RIGHT ? steer_step:-steer_step);
+        }
+        return PI::planning::Command(PI::planning::command::MOVE,0);
+    }
+    lost_count = 0;
+    cv::Vec3d tvec = pose->translation();
+    cv::Vec3d rvec =  pose->rvec();
+    double x = tvec[0];
+    double y = tvec[1];
+    double angle_z = rvec[2];
+    cmd = PI::planning::Command(PI::planning::command::MOVE,0);
+    if(abs(y) < y_thresh && abs(angle_z) > angle_thresh && abs(x) < x_thresh)
+        return cmd;
+    else if(abs(x) > x_thresh){
+        if (x < 0){
+            cmd = PI::planning::Command(PI::planning::command::TURN,steer_step);
+            state = LEFT;
+        }
+        else{
+            cmd = PI::planning::Command(PI::planning::command::TURN,-steer_step);
+            state = RIGHT;
+        }
+    }
+    else{
+        cmd =  PI::planning::Command(PI::planning::command::MOVE,move_step);
+        state = FORWARD;
+    }
+    return cmd;
+}
 
 
 
