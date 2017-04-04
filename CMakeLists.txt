@@ -100,6 +100,7 @@ set(PI_LIBS
 set(APPS
     "apps/v1_viewer.cpp"
     "apps/vision_controller.cpp"
+    "apps/map_iterator.cpp"
 )
 
 foreach(app ${APPS})

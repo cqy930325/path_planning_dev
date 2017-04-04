@@ -15,7 +15,7 @@
 #include <util/statistics.h>
 #include <iostream>
 #include <planning/command.h>
-#include <Eigen/Core>
+
 const std::string kWindowName1("PerceptIn V1 Stereo Left");
 const std::string kWindowName2("PerceptIn V1 Stereo Right");
 
@@ -26,6 +26,7 @@ void ExposureTrackerBarCallback(int value, void *interface_ptr) {
 
 
 
+
 class MarkerLocator{
 public:
     explicit MarkerLocator(std::shared_ptr<PI::config::Config> cfg);
@@ -33,12 +34,16 @@ public:
     virtual bool getModels(std::string file_calib) = 0;
     virtual bool getCameraPose(std::shared_ptr<PI::interface::Data> data) = 0;
     virtual bool getBotPose(std::shared_ptr<PI::interface::Data> data,cv::Affine3d *bot_T_pattern) = 0;
+    cv::Affine3d* getbot_T_device(){return bot_T_device;}
 protected:
     std::shared_ptr<PI::marker::MarkerDetector> detector_ptr;
     double max_rms_value = 5.0; //TODO:need add to config file
     cv::Affine3d *device_T_pattern = new cv::Affine3d;
     std::map<PI::sensor::Id, cv::Affine3d> sensors_Ts_device;
     cv::Affine3d *bot_T_device = new cv::Affine3d;
+
+
+
 };
 
 MarkerLocator::MarkerLocator(std::shared_ptr<PI::config::Config> cfg){
@@ -50,7 +55,7 @@ public:
     ~ChessStereoLocator(){}
     bool getModels(std::string file_calib) override;
     bool getCameraPose(std::shared_ptr<PI::interface::Data> data) override;
-    bool getBotPose(std::shared_ptr<PI::interface::Data> data,cv::Affine3d *bot_T_pattern) override;
+    bool getBotPose(std::shared_ptr<PI::interface::Data> data,cv::Affine3d *pattern_T_bot) override;
     cv::Affine3d getDevice_T_pattern(){return *device_T_pattern;}
 private:
     std::shared_ptr<PI::marker::ChessboardDetector> cbDetectorptr;
@@ -68,11 +73,11 @@ ChessStereoLocator::ChessStereoLocator(std::shared_ptr<PI::config::Config> cfg) 
     cbDetectorptr = std::dynamic_pointer_cast<PI::marker::ChessboardDetector>(detector_ptr);
 }
 
-bool ChessStereoLocator::getBotPose(std::shared_ptr<PI::interface::Data> data,cv::Affine3d *bot_T_pattern){
+bool ChessStereoLocator::getBotPose(std::shared_ptr<PI::interface::Data> data,cv::Affine3d *pattern_T_bot){
    if (!getCameraPose(data)){
        return false;
    }
-    *bot_T_pattern = *device_T_pattern * *bot_T_device;
+    *pattern_T_bot = *bot_T_device * *device_T_pattern ;
    return true;
 }
 bool ChessStereoLocator::getModels(const std::string file_calib){
@@ -111,12 +116,17 @@ bool ChessStereoLocator::getCameraPose(const std::shared_ptr<PI::interface::Data
     }
     return PI::marker::SolvePnp(correspondences,camera_models,sensors_Ts_device,max_rms_value,device_T_pattern,inliers,errors);
 }
+void printAffine3D(cv::Affine3d T){
 
-/**                                              y
- *  coordinate system for bot                   /|\
- *  x:                                           |
- *  y: direction for the bot head for            |_______\ x                                                      /
- *  z: perpendicular to x-y plane (point up to the ground )
+    cv::Matx<double,4,1> pose3d= T.matrix * cv::Matx<double,4,1>(0,0,0,1);
+    std::cout << "pose = " << std::endl << " " << pose3d << std::endl;
+
+}
+/**                                                             y
+ *  coordinate system for bot                                  /|\
+ *  x: perpendicular to bot move forward direction              |                             |
+ *  y: direction for the bot move forward                       |_______\ x                                                      /
+ *  z: perpendicular to x-y plane (point down to the ground )
  */
 class Controller{
 public:
@@ -126,12 +136,12 @@ public:
     };
     enum State{IDLE,LEFT,RIGHT,FORWARD,BACKWARD,HALT};
     Controller(Parameters p);
-    PI::planning::Command getCommand(std::shared_ptr<PI::interface::Data> data,ChessStereoLocator csl);
+    PI::planning::Command getCommand(cv::Affine3d* pose);
+    PI::planning::Command getCommand();
     std::string command2Str();
 private:
     PI::planning::Command cmd;
     PI::planning::Command prev_cmd;
-    cv::Affine3d* pose;
     State state,prev_state;
     double x_thresh,y_thresh,angle_thresh;
     double steer_step, move_step;
@@ -159,33 +169,38 @@ std::string Controller::command2Str(){
             break;
         case BACKWARD:ret ="BACKWARD";
             break;
-        default:      ret ="IDLE";
+        case IDLE:    ret = "IDLE";
+            break;
     }
     return ret;
 }
-PI::planning::Command Controller::getCommand(std::shared_ptr<PI::interface::Data> data,ChessStereoLocator csl){
-    if (!csl.getBotPose(data,pose)){
-        if (state == IDLE)
+
+PI::planning::Command Controller::getCommand(){
+    if (state == IDLE)
+        return PI::planning::Command(PI::planning::command::MOVE,0);
+    if (state == RIGHT || state == LEFT){
+        lost_count++;
+        if (lost_count < 5){
             return PI::planning::Command(PI::planning::command::MOVE,0);
-        if (state == RIGHT || state == LEFT){
-            lost_count++;
-        if (lost_count < 5)
-            return PI::planning::Command(PI::planning::command::MOVE,0);
-        else
+        }
+        else{
+            state = state == RIGHT ? LEFT:RIGHT;
             return PI::planning::Command(PI::planning::command::TURN,state == RIGHT ? steer_step:-steer_step);
         }
-        return PI::planning::Command(PI::planning::command::MOVE,0);
     }
+    return PI::planning::Command(PI::planning::command::MOVE,0);
+}
+PI::planning::Command Controller::getCommand(cv::Affine3d* pose){
+    cmd = PI::planning::Command(PI::planning::command::MOVE,0);
     lost_count = 0;
     cv::Vec3d tvec = pose->translation();
     cv::Vec3d rvec =  pose->rvec();
     double x = tvec[0];
     double y = tvec[1];
     double angle_z = rvec[2];
-    cmd = PI::planning::Command(PI::planning::command::MOVE,0);
-    if(abs(y) < y_thresh && abs(angle_z) > angle_thresh && abs(x) < x_thresh)
+    if(fabs(y) < y_thresh && fabs(angle_z) > angle_thresh && fabs(x) < x_thresh)
         return cmd;
-    else if(abs(x) > x_thresh){
+    else if(fabs(x) > x_thresh){
         if (x < 0){
             cmd = PI::planning::Command(PI::planning::command::TURN,steer_step);
             state = LEFT;
@@ -199,17 +214,11 @@ PI::planning::Command Controller::getCommand(std::shared_ptr<PI::interface::Data
         cmd =  PI::planning::Command(PI::planning::command::MOVE,move_step);
         state = FORWARD;
     }
-    return cmd;
+    return PI::planning::Command(PI::planning::command::MOVE,0);
 }
 
 
 
-void printAffine3D(cv::Affine3d T){
-    cv::Vec3d rvec = T.rvec();
-    cv::Vec3d tvec = T.translation();
-    std::cout << "tvec = " << std::endl << " " << tvec << std::endl;
-    std::cout << "rvec = " << std::endl << " " << rvec << std::endl;
-}
 
 int main(int argc, char *argv[]) {
     if (argc < 3) {
@@ -225,10 +234,18 @@ int main(int argc, char *argv[]) {
     //TODO: add bot frame!!
     std::shared_ptr<PI::config::Config> cfg = PI::config::ReadConfig(file_cfg,"marker");
     ChessStereoLocator csl(cfg);
+    Controller::Parameters p;
+    p.angle_thresh = 0.3;
+    p.move_step = 1;
+    p.steer_step = 0.1;
+    p.x_thresh = 0.1;
+    p.y_thresh = 1;
+    Controller c(p);
     if (!csl.getModels(file_calib)){
         std::cout << "can not find camera model in JSON file!" << std::endl;
         return -1;
     }
+    std::cout << "transform from bot to device" << std::endl << csl.getbot_T_device()->matrix << std::endl;
     // Start streaming.
     if (!interface.StartStreaming()) {
         return -1;
@@ -272,9 +289,16 @@ int main(int argc, char *argv[]) {
             }
             cv::Affine3d *botPose = new cv::Affine3d;
             if (csl.getBotPose(stereo_data,botPose)){
-                //printAffine3D(csl.getDevice_T_pattern());
+                std::cout << "cam:" << std::endl;
+                printAffine3D(csl.getDevice_T_pattern());
+                std::cout << "bot:" << std::endl;
                 printAffine3D(*botPose);
+                c.getCommand(botPose);
+            }else{
+                c.getCommand();
             }
+
+            std::cout << "state:" <<c.command2Str() << std::endl;
             continue;
         }
         // This is not an IMU data nor a stereo data. Who are you?
