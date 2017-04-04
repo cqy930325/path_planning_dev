@@ -5,8 +5,7 @@
 
 cv::Mat generateMap(int x, int y){
     cv::Mat map = cv::Mat(x,y,CV_8U,255);
-    std::cout <<map << std::endl;
-    /*for(int i = 30; i < 70;i++)
+    for(int i = 30; i < 70;i++)
         for(int j = 30;j < 90;j++)
             map.at<uchar>(j,i) = 0;
     for(int i = 140; i < 170;i++)
@@ -19,32 +18,58 @@ cv::Mat generateMap(int x, int y){
         for(int j = startx - i; j <= startx + i;j++){
             map.at<uchar>(starty+i,j) = 0;
         }
-    }*/
+    }
     return map;
 }
-void dfs(cv::Mat *pmap, int x, int y, uchar val){
-    std::cout << x << "," << y << "," << int(val) << std::endl;
-    if(x >= 0 && x < pmap->cols && y >= 0 && y < pmap->rows && pmap->at<uchar>(y,x) != 0)
-        pmap->at<uchar>(y,x) = pmap->at<uchar>(y,x) > val ? val : pmap->at<uchar>(y,x);
-    else
-        return;
-    dfs(pmap,x,y+1,val+1);
-    dfs(pmap,x,y-1,val+1);
-    dfs(pmap,x+1,y+1,val+1);
-    dfs(pmap,x+1,y,val+1);
-    dfs(pmap,x+1,y-1,val+1);
-    dfs(pmap,x-1,y+1,val+1);
-    dfs(pmap,x-1,y,val+1);
-    dfs(pmap,x-1,y-1,val+1);
+void bfs(cv::Mat *pmap, int x, int y, uchar val){
+    int i = 1;
+    pmap->at<uchar>(y,x) = val;
+    cv::Mat *obstacleMap = new cv::Mat(pmap->clone());
+    *obstacleMap = *obstacleMap / 255;
+    while(x+i < pmap->cols || x-i >= 0 || y+i < pmap->rows || y-i >= 0){
+        val++;
+        if(x+i < pmap->cols){
+            for(int j = 0; j <= i-1;j++){
+                pmap->at<uchar>(y-j,x+i) = val;
+                pmap->at<uchar>(y+j,x+i) = val;
+            }
+        }
+        if(y+i < pmap->rows){
+            for(int j = 0; j <= i-1;j++){
+                pmap->at<uchar>(y+i,x-j) = val;
+                pmap->at<uchar>(y+i,x+j) = val;
+            }
+        }
+        if(x-i >= 0){
+            for(int j = 0; j <= i-1;j++){
+                pmap->at<uchar>(y+j,x-i) = val;
+                pmap->at<uchar>(y-j,x-i) = val;
+            }
+        }
+        if(y-i >= 0){
+            for(int j = 0; j <= i-1;j++){
+                pmap->at<uchar>(y-i,x+j) = val;
+                pmap->at<uchar>(y-i,x-j) = val;
+            }
+        }
+        if(x+i < pmap->cols && y+i < pmap->rows)
+            pmap->at<uchar>(y+i,x+i) = val;
+        if(x-i >= 0 && y-i >= 0)
+            pmap->at<uchar>(y-i,x-i) = val;
+        if(x-i >= 0 && y+i < pmap->rows)
+            pmap->at<uchar>(y+i,x-i) = val;
+        if(y-i >= 0 && x+i < pmap->rows)
+            pmap->at<uchar>(y-i,x+i) = val;
+        i++;
+    }
+    *pmap = pmap->dot(*obstacleMap);
 }
 
 cv::Mat getPotentialMap(cv::Mat map,std::pair<int,int> end){
-    cv::Mat* pmap = new cv::Mat(map);
-    std::cout << *pmap << std::endl;
+    cv::Mat* pmap = new cv::Mat(map.clone());
     int x = end.first;
     int y = end.second;
-    dfs(pmap,x,y,char(1));
-    std::cout << *pmap << std::endl;
+    bfs(pmap,x,y,char(1));
     return *pmap;
 }
 std::vector<std::pair<int,int>> waterfront_pathplanner(cv::Mat map, std::pair<int,int> start, std::pair<int,int> end){
@@ -56,8 +81,8 @@ std::vector<std::pair<int,int>> waterfront_pathplanner(cv::Mat map, std::pair<in
 int main(int argc, char* argv[]){
     //cv::Mat map_c = cv::imread("./map.png");
     //
-    cv::Mat map = generateMap(3,3);
-    getPotentialMap(map,std::pair<int,int>(1,1));
+    cv::Mat map = generateMap(200,200);
+    getPotentialMap(map,std::pair<int,int>(100,100));
     while(1){
         cv::imshow("map", map);
         int key = cv::waitKey(5);
