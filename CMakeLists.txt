@@ -95,6 +95,7 @@ set(PI_LIBS
     -lpi_core_util
     -lpi_interface
     -lpi_core_config
+    -lpi_core_slam
     -luvc)
 # Build the sample apps.
 set(APPS

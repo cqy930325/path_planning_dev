@@ -1,6 +1,8 @@
 #include <opencv2/highgui/highgui.hpp>
-#include <opencv2/core/cvstd.hpp>
 #include <opencv2/imgproc.hpp>
+#include <slam/map/occupancy_grid_map/occupancy_grid_map.h>
+#include <slam/map/occupancy_grid_map/syn_ogm.h>
+#include <slam/map/map.h>
 #include <iostream>
 
 
@@ -39,15 +41,15 @@ void dfs_help(cv::Mat *pamp,std::pair<int,int> cell,uchar val){
         return;
     val++;
     dfs_help(pamp,std::pair<int,int>(y,x+1),val);
-    std::cout << "gg" <<std::endl;
+    //std::cout << "gg" <<std::endl;
     dfs_help(pamp,std::pair<int,int>(y+1,x+1),val);
-    std::cout << "hhh" <<std::endl;
+    //std::cout << "hhh" <<std::endl;
     dfs_help(pamp,std::pair<int,int>(y-1,x+1),val);
-    std::cout << "ffff" <<std::endl;
+    //std::cout << "ffff" <<std::endl;
     dfs_help(pamp,std::pair<int,int>(y-1,x),val);
-    std::cout << "iiii" <<std::endl;
+    //std::cout << "iiii" <<std::endl;
     dfs_help(pamp,std::pair<int,int>(y+1,x),val);
-    std::cout << "jjjj" <<std::endl;
+    //sstd::cout << "jjjj" <<std::endl;
     dfs_help(pamp,std::pair<int,int>(y-1,x-1),val);
     dfs_help(pamp,std::pair<int,int>(y+1,x-1),val);
     dfs_help(pamp,std::pair<int,int>(y,x-1),val);
@@ -121,16 +123,15 @@ std::vector<std::pair<int,int>> waterfront_pathplanner(cv::Mat map, std::pair<in
 }
 
 int main(int argc, char* argv[]){
-    //cv::Mat map_c = cv::imread("./map.png");
-    //
-    cv::Mat map = generateMap(14,14);
-    getPotentialMap(map,std::pair<int,int>(9,7));
+    std::default_random_engine rnd(1024);
+    std::shared_ptr<PI::slam::ogm::OccupancyGridMap> ogm = PI::slam::ogm::CreateRandomOgm(rnd);
+
+    cv::Mat map = ogm->Visualize();
     while(1){
         cv::imshow("map", map);
         int key = cv::waitKey(5);
-        if (key == 27) {
+        if (key == 27)
           break;
-        }
         continue;
     }
     return 0;
