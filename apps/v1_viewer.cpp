@@ -64,7 +64,7 @@ int main(int argc, char *argv[]) {
       cv::imshow(kWindowName1, stereo_data->image_left);
       cv::imshow(kWindowName2, stereo_data->image_right);
 
-      char key = cv::waitKey(5);
+      int key = cv::waitKey(5);
       if (key == 27) {
         break;
       }

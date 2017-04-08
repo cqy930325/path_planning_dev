@@ -101,11 +101,14 @@ set(PI_LIBS
 set(APPS
     "apps/v1_viewer.cpp"
     "apps/vision_controller.cpp"
-    "apps/map_iterator.cpp"
-)
+    "apps/cpp_unit_test.cpp"
+    "apps/map_help.cpp"
+        )
+add_library (CPP_LIB "apps/coverage_path_planning.cpp")
+target_include_directories(CPP_LIB PUBLIC "apps")
 
 foreach(app ${APPS})
     get_filename_component(EXE_NAME ${app} NAME_WE)
     add_executable(${EXE_NAME} ${app})
-    target_link_libraries(${EXE_NAME} ${EXT_LIBS} ${PI_LIBS})
+    target_link_libraries(${EXE_NAME} ${EXT_LIBS} ${PI_LIBS} CPP_LIB)
 endforeach(app)

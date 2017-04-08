@@ -6,15 +6,14 @@
 #include <model/camera_model.h>
 #include <marker/chessboard_detector.h>
 #include <marker/solve_pnp.h>
-#include <marker/correspondence3d2d.h>
 #include <marker/marker.h>
-#include <marker/marker_detector.h>
 #include <config/config.h>
 #include <config/config_io.h>
-#include <sensor/sensors.h>
 #include <util/statistics.h>
 #include <iostream>
 #include <planning/command.h>
+#include <opencv2/opencv.hpp>
+
 
 const std::string kWindowName1("PerceptIn V1 Stereo Left");
 const std::string kWindowName2("PerceptIn V1 Stereo Right");
@@ -109,7 +108,7 @@ bool ChessStereoLocator::getCameraPose(const std::shared_ptr<PI::interface::Data
     std::map<PI::sensor::Id,std::vector<PI::marker::Correspondence3d2d>> correspondences;
     if(leftFound)
         correspondences[PI::sensor::ID_STEREO_LEFT] = *leftcorrespondences;
-    else if(rightFound)
+    if(rightFound)
         correspondences[PI::sensor::ID_STEREO_RIGHT] = *rightcorrespondences;
     if (!leftFound && !rightFound){
         return false;
@@ -141,8 +140,7 @@ public:
     std::string command2Str();
 private:
     PI::planning::Command cmd;
-    PI::planning::Command prev_cmd;
-    State state,prev_state;
+    State state;
     double x_thresh,y_thresh,angle_thresh;
     double steer_step, move_step;
     double lost_count;
@@ -154,7 +152,6 @@ Controller::Controller(Controller::Parameters p){
     steer_step = p.steer_step;
     move_step = p.move_step;
     state = IDLE;
-    prev_state = IDLE;
 }
 std::string Controller::command2Str(){
     std::string ret;
@@ -225,11 +222,16 @@ int main(int argc, char *argv[]) {
         printf("Not enough input argument.\nUsage:\n%s [calib JSON] [config JSON] \n", argv[0]);
         return -1;
     }
-    google::InitGoogleLogging(argv[0]);
-    google::SetStderrLogging(google::ERROR);
-    google::SetLogDestination(google::INFO, std::string("/tmp/" + std::string(argv[0]) + "_").c_str());
+    //google::InitGoogleLogging(argv[0]);
+    //google::SetStderrLogging(google::ERROR);
+    //google::SetLogDestination(google::INFO, std::string("/tmp/" + std::string(argv[0]) + "_").c_str());
     const std::string file_calib(argv[1]);
     const std::string file_cfg(argv[2]);
+    int fontFace = cv::FONT_HERSHEY_SIMPLEX;
+    double fontScale = 3;
+    std::string status;
+    cv::Point textOrg((640 - 400)/2,
+                      (480 + 10)/2);
     PI::interface::PerceptInV1Interface interface(true, false);
     //TODO: add bot frame!!
     std::shared_ptr<PI::config::Config> cfg = PI::config::ReadConfig(file_cfg,"marker");
@@ -239,7 +241,7 @@ int main(int argc, char *argv[]) {
     p.move_step = 1;
     p.steer_step = 0.1;
     p.x_thresh = 0.1;
-    p.y_thresh = 1;
+    p.y_thresh = 0.6;
     Controller c(p);
     if (!csl.getModels(file_calib)){
         std::cout << "can not find camera model in JSON file!" << std::endl;
@@ -281,7 +283,9 @@ int main(int argc, char *argv[]) {
         std::shared_ptr<PI::interface::StereoData> stereo_data =
                 std::dynamic_pointer_cast<PI::interface::StereoData>(data);
         if (stereo_data) {
-            cv::imshow(kWindowName1, stereo_data->image_left);
+            cv::Mat left_res = stereo_data->image_left.clone();
+            cv::putText(left_res,status,textOrg,fontFace,fontScale,cv::Scalar::all(0));
+            cv::imshow(kWindowName1, left_res);
             cv::imshow(kWindowName2, stereo_data->image_right);
             int key = cv::waitKey(5);
             if (key == 27) {
@@ -289,15 +293,12 @@ int main(int argc, char *argv[]) {
             }
             cv::Affine3d *botPose = new cv::Affine3d;
             if (csl.getBotPose(stereo_data,botPose)){
-                std::cout << "cam:" << std::endl;
-                printAffine3D(csl.getDevice_T_pattern());
-                std::cout << "bot:" << std::endl;
-                printAffine3D(*botPose);
                 c.getCommand(botPose);
+                printAffine3D(*botPose);
             }else{
                 c.getCommand();
             }
-
+            status = c.command2Str();
             std::cout << "state:" <<c.command2Str() << std::endl;
             continue;
         }
