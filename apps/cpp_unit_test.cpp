@@ -2,8 +2,8 @@
 // Created by perceptin on 4/7/17.
 //
 
-#include "./coverage_path_planning.h"
-
+#include "../src/coverage_path_planning.h"
+// Add Triangle to CV::mat style OGM (function for test only)
 void AddTriangle(int x, int y, int level, cv::Mat *map) {
   for (int i = 0; i < level; ++i) {
     for (int j = x - i; j <= x + i; ++j) {
@@ -11,6 +11,8 @@ void AddTriangle(int x, int y, int level, cv::Mat *map) {
     }
   }
 }
+// Add Rectangle to CV::mat style OGM (function for test only)
+
 void AddRectangle(std::pair<int, int> top_left, std::pair<int, int> bottom_right
   , cv::Mat *map, int val) {
   for (int i = top_left.first; i <= bottom_right.first; ++i)
@@ -18,6 +20,7 @@ void AddRectangle(std::pair<int, int> top_left, std::pair<int, int> bottom_right
       map->at<int>(i, j) = val;
 }
 
+// Generate a cv::mat style OGM (function for test only)
 cv::Mat GenerateMap(int x, int y) {
   cv::Mat map = cv::Mat(x, y, CV_32S, 1);
   AddRectangle(std::pair<int, int>(1, 1),
@@ -29,9 +32,11 @@ cv::Mat GenerateMap(int x, int y) {
   AddTriangle(50, 50, 20, &map);
   return map;
 }
+
+// Coverage path planning for input OGM and visualize the plan by CV::mat
 bool Visualize(std::shared_ptr<PI::slam::ogm::OccupancyGridMap> ogm,
                cv::Point2d start, cv::Point2d goal, int scale,
-               const cv::Mat &path_map) {
+               cv::Mat &path_map) {
   std::vector<PI::slam::ogm::CellIndex> *path =
     new std::vector<PI::slam::ogm::CellIndex>;
   if (!GeneratePath(ogm, start, goal, path)) return false;
@@ -42,6 +47,9 @@ bool Visualize(std::shared_ptr<PI::slam::ogm::OccupancyGridMap> ogm,
   cv::resize(ogm->Visualize(), path_map, cv::Size(), scale, scale);
   return true;
 }
+
+//Unit test for CPP in different start point on the same OGM,
+// input n is the random seed
 void RandomStartTest(int n) {
   std::default_random_engine rnd(n);
   std::shared_ptr<PI::slam::ogm::OccupancyGridMap> ogm;
@@ -83,7 +91,7 @@ void RandomStartTest(int n) {
     for (double j = -ogm->map_size().height / 2;
          j < ogm->map_size().height / 2
       ; j += (ogm->map_size().height / 10)) {
-      if (!Visualize(ogm, cv::Point2d(i, j),
+      if (!Visualize(ogm, cv::Point2d(i, j),  // generate the plan
                      cv::Point2d(i, j), 1, path_map)) {
         std::cout << "can not start at(" << i
                   << "," << j << "), go to next" << std::endl;
@@ -96,9 +104,9 @@ void RandomStartTest(int n) {
     }
   }
 }
-
+//unit test for CPP in different OGM
 void RandomMapTest() {
-  for (int num = 61; num < 1000; ++num) {
+  for (int num = 12; num < 1000; ++num) {
     std::default_random_engine rnd(num);
     std::shared_ptr<PI::slam::ogm::OccupancyGridMap> ogm;
     try {
@@ -107,7 +115,7 @@ void RandomMapTest() {
       std::cout << "random generator error" << std::endl;
       continue;
     }
-    while (ogm->grid_size().width % 2 == 0
+    while (ogm->grid_size().width % 2 == 0  //test the scaleup function
       && ogm->grid_size().height % 2 == 0) {
       ogm = UpScale(ogm, 2);
       std::cout << "scaled by 2" << std::endl;
@@ -129,11 +137,12 @@ void RandomMapTest() {
     }
     std::cout << "test #" << num << std::endl
               << ogm->grid_size() << std::endl;
-    Binarize(ogm, 0.2);
+    Binarize(ogm, 0.2);  //Binarize the OGM to 0 and 1
     std::string file_name = "./data/random_map_test_"
       + std::to_string(num) + ".png";
     cv::Mat path_map;
     if (!Visualize(ogm, cv::Point2d(0, 0), cv::Point2d(0, 0), 1, path_map)) {
+      // generate the plan
       std::cout << "can not start at 0,0 , go to next" << std::endl;
       continue;
     }
@@ -142,6 +151,7 @@ void RandomMapTest() {
   }
 }
 
+//visualize the CPP step by step, input n is the random number generator seed
 void CheckMap(int n) {
   std::default_random_engine rnd(n);
   std::shared_ptr<PI::slam::ogm::OccupancyGridMap> ogm;
@@ -183,7 +193,7 @@ void CheckMap(int n) {
 }
 
 int main(int argc, char *argv[]) {
-  CheckMap(3);
+  //CheckMap(3);
   RandomMapTest();
   RandomStartTest(1024);
   return 0;
